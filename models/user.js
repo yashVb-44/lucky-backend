@@ -10,6 +10,7 @@ const UserSchema = new mongoose.Schema(
         password: { type: String },
         isBlocked: { type: Boolean, default: false },
         coins: { type: Number, default: 0 },
+        walletAmount: { type: Number, default: 0 },
         isVerified: { type: Boolean, default: false },
         isActive: { type: Boolean, default: false },
         isDeleted: { type: Boolean, default: false },

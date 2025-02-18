@@ -3,7 +3,7 @@ const Bid = require('../models/bid');
 const BiddingSession = require('../models/biddingSession');
 const { generateImageUrls } = require('../utils/utils');
 const { default: mongoose } = require('mongoose');
-const { getCoinsValueAtBidTime } = require('../utils/coinUtils');
+const { addCoinTransaction, debitCoinsFromUser, getBiddingSessionAtBidTime } = require('../utils/coinUtils');
 const { findWinningUser } = require('../utils/bidSessionUtils');
 
 // Add a new Bid
@@ -96,9 +96,6 @@ const addBid = asyncHandler(async (req, res) => {
 
         const { id } = req.user;
         const { biddingSession, amount, range, isRange } = req.body;
-        const coinValueAtBid = await getCoinsValueAtBidTime({ sessionId: biddingSession });
-
-        // Validate if the bidding session exists
         const session = await BiddingSession.findById(biddingSession);
         if (!session) {
             return res.status(404).json({
@@ -106,6 +103,11 @@ const addBid = asyncHandler(async (req, res) => {
                 type: "error",
             });
         }
+        const biddingSessionDetails = await getBiddingSessionAtBidTime({ sessionId: biddingSession });
+        const coinValueAtBid = biddingSessionDetails?.bidCoinValue
+        const sessionName = biddingSessionDetails?.title
+        let numberOfBids = 1
+        let totalCoins = numberOfBids * coinValueAtBid
 
         if (isRange && range) {
             const rangePattern = /^\d+(\.\d+)?-\d+(\.\d+)?$/;
@@ -122,6 +124,13 @@ const addBid = asyncHandler(async (req, res) => {
                     message: "Invalid range values. Ensure the end is greater than the start.",
                     type: "error",
                 });
+            }
+
+            numberOfBids = Math.floor((end - start) / 0.01) + 1 || 1
+            totalCoins = numberOfBids * coinValueAtBid
+            const isDebited = await debitCoinsFromUser(id, totalCoins);
+            if (!isDebited) {
+                return res.status(400).json({ message: 'Insufficient coins', type: 'error' });
             }
 
             let bids = [];
@@ -146,16 +155,31 @@ const addBid = asyncHandler(async (req, res) => {
                 isRange: false,
                 coinValueAtBid,
             });
-
+            const isDebited = await debitCoinsFromUser(id, totalCoins);
+            if (!isDebited) {
+                return res.status(400).json({ message: 'Insufficient coins', type: 'error' });
+            }
             await newBid.save();
         }
 
+        await addCoinTransaction({
+            userId: id,
+            transactionType: '0', // Debit  
+            type: '0', // Bid placed
+            value: totalCoins,
+            BiddingSessionId: biddingSession,
+            numberOfBids, // Pass the calculated number of bids
+            description: `You have used ${totalCoins} coins in the bid of ${sessionName}`,
+        });
+
+
         // Find the winning user and emit the result
-        const { user: winningUser, amount: winningAmount } = await findWinningUser(biddingSession);
+        const { user: winningUser, amount: winningAmount, totalBids } = await findWinningUser(biddingSession);
 
         io.to(biddingSession).emit("winningUser", {
             user: winningUser || null,
             amount: winningAmount || null,
+            totalBids: totalBids || 0
         });
 
         return res.status(201).json({
@@ -171,7 +195,6 @@ const addBid = asyncHandler(async (req, res) => {
         });
     }
 });
-
 
 // Get all bids for a specific bidding session
 const getBidsForSession = asyncHandler(async (req, res) => {
@@ -208,6 +231,10 @@ const getBidsForSession = asyncHandler(async (req, res) => {
 const getUserTotalBidsForSession = asyncHandler(async (req, res) => {
     try {
         const { biddingSessionId } = req.params;
+        const { page = 1, limit = 10 } = req.query; // Default pagination values
+        const skip = (page - 1) * limit;
+
+        const totalUsers = await Bid.distinct("user", { biddingSession: new mongoose.Types.ObjectId(biddingSessionId) });
 
         // Aggregate the total bids and amounts for each user in the session
         const userBids = await Bid.aggregate([
@@ -239,7 +266,10 @@ const getUserTotalBidsForSession = asyncHandler(async (req, res) => {
                     totalAmount: 1,
                 },
             },
-        ]);
+            { $sort: { totalAmount: -1 } }, // Sort by highest bid amount
+            { $skip: skip }, // Implement pagination
+            { $limit: parseInt(limit) }, // Implement pagination
+        ])
 
         if (!userBids.length) {
             return res.status(404).json({
@@ -252,6 +282,12 @@ const getUserTotalBidsForSession = asyncHandler(async (req, res) => {
             message: 'User total bids fetched successfully',
             type: 'success',
             data: userBids,
+            pagination: {
+                currentPage: parseInt(page),
+                limit: parseInt(limit),
+                totalUsers: totalUsers.length,
+                totalPages: Math.ceil(totalUsers.length / limit),
+            },
         });
     } catch (error) {
         return res.status(500).json({
@@ -297,11 +333,18 @@ const getUserBidsForSession = asyncHandler(async (req, res) => {
     try {
         const { id } = req.user
         const { biddingSessionId } = req.params;
+        const { page = 1, limit = 10 } = req.query; // Default pagination values
+        const skip = (page - 1) * limit;
+
+        const totalBids = await Bid.countDocuments({ biddingSession: biddingSessionId, user: id });
 
         // Fetch bids for a specific user in a specific session
         const bids = await Bid.find({ biddingSession: biddingSessionId, user: id })
             .populate('user', 'name email') // Populate user details
-            .populate('biddingSession', 'startTime endTime');
+            .populate('biddingSession', 'startTime endTime')
+            .sort({ createdAt: -1 })
+            .skip(skip)
+            .limit(parseInt(limit));
 
         if (!bids.length) {
             return res.status(404).json({
@@ -314,6 +357,12 @@ const getUserBidsForSession = asyncHandler(async (req, res) => {
             message: 'User\'s bids fetched successfully',
             type: 'success',
             bids,
+            pagination: {
+                currentPage: parseInt(page),
+                limit: parseInt(limit),
+                totalBids,
+                totalPages: Math.ceil(totalBids / limit),
+            },
         });
     } catch (error) {
         return res.status(500).json({

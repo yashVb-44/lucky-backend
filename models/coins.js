@@ -12,14 +12,20 @@ const CoinsSchema = new mongoose.Schema(
             enum: ['0', '1'], // 0 = debit, 1 = credit
             default: '2', // Correct default to 2 (nothing) for uninitialized transactions
         },
-        type: { 
-            type: String, 
-            enum: ['0', '1'], // 0 = bid placed, 1 = coin purchased
-            default: '0', 
+        type: {
+            type: String,
+            enum: ['0', '1', '2'], // 0 = bid placed, 1 = coin purchased, 2 = coin withdrwal
+            default: '0',
+        },
+        numberOfBid: {
+            type: Number
         },
         value: {
             type: Number,
             default: 0,
+        },
+        amount: {
+            type: Number,
         },
         BiddingSessionId: {
             type: mongoose.Schema.Types.ObjectId,

@@ -81,72 +81,35 @@ const expressAsyncHandler = require("express-async-handler");
 // payment in and out from the sale
 const addUserWallet = asyncHandler(async (req, res) => {
   try {
-    const vendor = req.user;
-    const { transactions, totalAmount, userId, addOnAmount, walletAmount, isWithAddOnAmount, remainingAmount, type, paymentType, note } = req.body;
-
-    if (transactions && transactions.length > 0) {
-      // Loop through transactions which can include bookings or sale invoices
-      for (let i = 0; i < transactions.length; i++) {
-        const transactionEntry = transactions[i];
-        const { id: transactionId, amount: transactionAmount, transactionType, remainingAmount } = transactionEntry;
-
-        // Check whether the transaction is a booking or sale invoice
-        const transactionModel = transactionType === "Booking" ? Booking : SaleInvoice;
-        const existingTransaction = await transactionModel.findById(transactionId);
-
-        if (!existingTransaction) {
-          return res.status(400).json({
-            message: `Invalid transaction ID: ${transactionId}`,
-            type: "error",
-          });
-        }
-
-        // Update paidAmount for bookings or sale invoices
-        existingTransaction.paidAmount += transactionAmount;
-        existingTransaction.remainingAmount = remainingAmount
-        if (remainingAmount === 0) {
-          existingTransaction.isPaid = true
-        }
-        // await updateTransaction({ transactionId, amount: transactionAmount });
-        await existingTransaction.save();
-      }
-    }
+    const { id } = req.user;
+    const { transactionType, description, packageId, type, amount } = req.body;
 
     // Now handle wallet update for the user
     let wallet = await Wallet.findOne({
-      customer: userId,
-      owner: vendor.id,
+      userId: id
     });
 
     if (wallet) {
-      if (type === "1") {
-        wallet.amount -= addOnAmount,
-          wallet.virtualAmount -= addOnAmount
+      if (transactionType === "0") {
+        wallet.amount -= amount
       }
-      else {
-        if (isWithAddOnAmount === "1") {
-          wallet.amount += addOnAmount;
-          wallet.virtualAmount += addOnAmount;
-        } else {
-          wallet.amount -= walletAmount;
-        }
+      else if (transactionType === "1") {
+        wallet.amount += amount
       }
     } else {
       wallet = new Wallet({
-        customer: userId,
-        customerModel: "User",
-        ownerModel: "Vendor",
-        amount: addOnAmount,
-        virtualAmount: addOnAmount,
-        owner: vendor.id,
+        ...req.body,
+        userId: id,
+        amount: amount,
+        type
       });
     }
 
-    if (type === "1") {
-      await SaleAndPurchaseTransaction({ customer: userId, owner: vendor.id, transactionType: "0", subType: "4", amountType: "2", amount: addOnAmount, totalAmount: totalAmount, remainingAmount, ownerModel: "Vendor", customerModel: "User", isDebitFromWallet: "1", note, paymentType })
-    } else {
-      await SaleAndPurchaseTransaction({ customer: userId, owner: vendor.id, invoice: transactions || [], transactionType: "0", subType: "3", amountType: "1", amount: walletAmount, totalAmount: totalAmount, addOnAmount: addOnAmount || 0, ownerModel: "Vendor", customerModel: "User", isDebitFromWallet: "1", isWithAddOnAmount: isWithAddOnAmount ? "1" : "0", note, paymentType, transactions })
-    }
+    // if (type === "1") {
+    //   await SaleAndPurchaseTransaction({ customer: userId, owner: vendor.id, transactionType: "0", subType: "4", amountType: "2", amount: addOnAmount, totalAmount: totalAmount, remainingAmount, ownerModel: "Vendor", customerModel: "User", isDebitFromWallet: "1", note, paymentType })
+    // } else {
+    //   await SaleAndPurchaseTransaction({ customer: userId, owner: vendor.id, invoice: transactions || [], transactionType: "0", subType: "3", amountType: "1", amount: walletAmount, totalAmount: totalAmount, addOnAmount: addOnAmount || 0, ownerModel: "Vendor", customerModel: "User", isDebitFromWallet: "1", isWithAddOnAmount: isWithAddOnAmount ? "1" : "0", note, paymentType, transactions })
+    // }
 
     // Save the wallet
     await wallet.save();

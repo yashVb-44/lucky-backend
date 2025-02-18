@@ -8,6 +8,7 @@ const walletSchema = mongoose.Schema({
         index: true,
     },
     transactionType: { type: String, enum: ['0', '1'], default: "2" }, // 0 = debit , 1 = credit, 2 = nothing
+    type: { type: String, default: "0" }, // 0 = add money in to wallet , 1 = withdrawal mondey, 2 = buy coins
     description: { type: String },
     value: {
         type: Number,

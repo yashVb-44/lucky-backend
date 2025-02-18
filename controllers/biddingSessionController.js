@@ -52,7 +52,7 @@ const getBiddingSessions = asyncHandler(async (req, res) => {
         const { id } = req.params;
 
         if (id) {
-            const biddingSession = await BiddingSession.findById(id);
+            const biddingSession = await BiddingSession.findById(id).populate("winnerId", "name");
             if (!biddingSession) {
                 return res.status(404).json({
                     message: 'Bidding session not found',
@@ -80,6 +80,66 @@ const getBiddingSessions = asyncHandler(async (req, res) => {
             message: 'Failed to retrieve bidding sessions',
             error: error.message,
             type: 'error',
+        });
+    }
+});
+
+const getBiddingSessionsByType = asyncHandler(async (req, res) => {
+    try {
+        const { type } = req.query; // Get type from query params
+        const { page = 1, limit = 10 } = req.query; // Default pagination values
+        const userId = req.user.id; // Get logged-in user ID
+        const skip = (page - 1) * limit;
+
+        let filter = {};
+        const currentDate = new Date();
+
+        switch (parseInt(type)) {
+            case 1: // Live bids (ongoing)
+                filter = { startTime: { $lte: currentDate }, endTime: { $gte: currentDate } };
+                break;
+            case 2: // Upcoming bids
+                filter = { startTime: { $gt: currentDate } };
+                break;
+            case 3: // Won bids (Only sessions where this user won)
+                filter = { winnerId: userId };
+                break;
+            case 4: // History (completed bids)
+                filter = { endTime: { $lt: currentDate } };
+                break;
+            default:
+                return res.status(400).json({
+                    message: "Invalid type provided",
+                    type: "error"
+                });
+        }
+
+        const biddingSessions = await BiddingSession.find(filter)
+            .skip(skip)
+            .limit(parseInt(limit))
+            .populate("winnerId", "name")
+            .sort({ createdAt: -1 });
+
+        const sessionsWithUrls = biddingSessions.map(session => {
+            const sessionObj = session.toObject();
+            sessionObj.hasWon = session.winnerId ? session.winnerId.toString() === userId.toString() : false; // Check if logged-in user won
+            return generateImageUrls(sessionObj, req);
+        });
+
+        return res.status(200).json({
+            biddingSessions: sessionsWithUrls,
+            type: "success",
+            pagination: {
+                currentPage: parseInt(page),
+                limit: parseInt(limit),
+                totalSessions: await BiddingSession.countDocuments(filter),
+            }
+        });
+    } catch (error) {
+        return res.status(500).json({
+            message: "Failed to retrieve bidding sessions",
+            error: error.message,
+            type: "error"
         });
     }
 });
@@ -177,4 +237,5 @@ module.exports = {
     getBiddingSessions,
     updateBiddingSession,
     deleteBiddingSession,
+    getBiddingSessionsByType
 };

@@ -1,4 +1,5 @@
 const mongoose = require('mongoose');
+const Schema = mongoose.Schema;
 
 const BiddingSessionSchema = new mongoose.Schema({
     title: { type: String }, // Name or title of the bidding session
@@ -19,6 +20,8 @@ const BiddingSessionSchema = new mongoose.Schema({
     minBidAmount: { type: Number, default: 0 }, // Minimum allowed bid amount
     bidCoinValue: { type: Number, default: 1 }, // Coin value required for a single bid
     backgroundImage: { type: String }, // URL or path to the session's background image
+    winnerId: { type: Schema.Types.ObjectId, ref: 'User' },
+    winningBid: { type: Number, default: 0 }
 }, {
     timestamps: true,
 });

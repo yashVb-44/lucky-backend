@@ -12,7 +12,7 @@ const server = http.createServer(app);
 const io = new Server(server, {
     cors: {
         origin: "*", // Allow all origins for now, adjust this in production
-        methods: ["GET", "POST", "PUT"],
+        methods: ["GET", "POST", "PUT", "PATCH"],
     }
 });
 

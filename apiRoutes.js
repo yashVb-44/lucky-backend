@@ -10,6 +10,7 @@ const adminRoutes = require('./routes/adminRoutes');
 const settingRoutes = require('./routes/settingRoutes');
 const biddingSessionRoutes = require('./routes/biddingSessionRoutes');
 const bidRoutes = require('./routes/bidRoutes');
+const coinRoutes = require('./routes/coinRoutes');
 
 router.use("/user", userRoutes)
 router.use("/admin", adminRoutes)
@@ -17,5 +18,6 @@ router.use("/wallet", walletRoutes)
 router.use("/settings", settingRoutes)
 router.use("/bidding/session", biddingSessionRoutes)
 router.use("/bid", bidRoutes)
+router.use("/coin", coinRoutes)
 
 module.exports = router;

@@ -1,9 +1,11 @@
 const { default: mongoose } = require("mongoose");
 const Bid = require("../models/bid");
 const User = require("../models/user");
+const BiddingSession = require("../models/biddingSession")
 
 
 const findWinningUser = async (biddingSession) => {
+    const totalBids = await Bid.countDocuments({ biddingSession });
     const winningBid = await Bid.aggregate([
         { $match: { biddingSession: new mongoose.Types.ObjectId(biddingSession) } }, // Filter by session
         {
@@ -20,16 +22,27 @@ const findWinningUser = async (biddingSession) => {
     if (winningBid.length > 0) {
         const userId = winningBid[0].users[0];
         const winningUser = await User.findById(userId).select("name email"); // Fetch user details
+        await BiddingSession.findByIdAndUpdate(biddingSession, {
+            winnerId: new mongoose.Types.ObjectId(userId),
+            winningBid: winningBid[0]._id
+        });
         return {
             user: winningUser,
             amount: winningBid[0]._id,
+            totalBids: totalBids || 0
+        };
+    } else {
+        // If no winner, remove winnerId and winningBid
+        await BiddingSession.findByIdAndUpdate(biddingSession, {
+            $unset: { winnerId: "", winningBid: "" }
+        });
+
+        return {
+            user: null,
+            amount: null,
+            totalBids: totalBids || 0
         };
     }
-
-    return {
-        user: null,
-        amount: null,
-    };
 };
 
 module.exports = { findWinningUser };
